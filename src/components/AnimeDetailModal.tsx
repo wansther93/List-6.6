@@ -37,8 +37,7 @@ import {
   CalendarDays,
   Building2,
   ChevronDown,
-  ChevronUp,
-  Sparkles,
+  ChevronUp
 } from 'lucide-react';
 import { HorizontalScrollContainer } from './HorizontalScrollContainer';
 import type { Anime, AnimeFormData, AnimeSeasonOrArc, AnimeStatus } from '../types';
@@ -60,8 +59,7 @@ import {
   AnimeStreamingLink,
 } from '../services/jikanService';
 import { updateAnime } from '../services/animeService';
-import { fetchAnimeFranchiseTree, syncFranchiseSeasonsForAnime } from '../services/franchiseService';
-import { resolveFranchiseAggregatedInfo, type FranchiseAggregatedInfo } from '../services/aggregatorStatusService';
+import { fetchAnimeFranchiseTree } from '../services/franchiseService';
 
 interface AnimeDetailModalProps {
   anime: Anime | null;
@@ -126,7 +124,6 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({
   const [isSavingSeasons, setIsSavingSeasons] = useState(false);
   const [isRefreshingTree, setIsRefreshingTree] = useState(false);
   const [refreshTreeFeedback, setRefreshTreeFeedback] = useState<{ text: string; success: boolean } | null>(null);
-  const [franchiseInfo, setFranchiseInfo] = useState<FranchiseAggregatedInfo | null>(null);
 
   useEffect(() => {
     if (anime) {
@@ -144,7 +141,6 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({
       setIsSynopsisExpanded(false);
       setIsManagingSeasons(false);
       setRefreshTreeFeedback(null);
-      setFranchiseInfo(null);
     }
   }, [anime?.id, anime?.notes, anime?.currentEpisode, anime?.bannerUrl]);
 
@@ -226,43 +222,6 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({
             updateAnime(anime.id, { bannerUrl: combinedBanners[0] }).catch(() => {});
           }
         }
-
-        // Auto-cura inteligente da Franquia em segundo plano (Camada 1 Shikimori / Camada 2 AniList)
-        try {
-          const syncRes = await syncFranchiseSeasonsForAnime(anime);
-          if (isMounted) {
-            const computed = resolveFranchiseAggregatedInfo(anime, {
-              unifiedStudios: syncRes.unifiedStudios,
-              hasUpcomingSeason: syncRes.hasUpcomingSeason,
-              hasReleasingSeason: syncRes.hasReleasingSeason,
-              totalReleasedEpisodes: syncRes.totalReleasedEpisodes,
-            });
-            setFranchiseInfo(computed);
-
-            // Se detectou novidades oficiais ou novos estúdios, atualiza o banco sem quebrar nada
-            if (!isPreviewOrReadOnly && anime.id) {
-              const patch: Partial<Anime> = {};
-              if (syncRes.hasNewSeasons && syncRes.updatedSeasons.length > 0) {
-                patch.seasons = syncRes.updatedSeasons;
-                patch.franchiseIds = syncRes.newFranchiseIds;
-              }
-              if (computed.unifiedStudios && computed.unifiedStudios !== anime.studio) {
-                patch.studio = computed.unifiedStudios;
-              }
-              if (computed.totalReleasedEpisodes && computed.totalReleasedEpisodes !== anime.totalEpisodes && (!anime.totalEpisodes || anime.totalEpisodes < computed.totalReleasedEpisodes)) {
-                patch.totalEpisodes = computed.totalReleasedEpisodes;
-              }
-              if (syncRes.latestBroadcastDay && syncRes.latestBroadcastDay !== anime.broadcastDay) {
-                patch.broadcastDay = syncRes.latestBroadcastDay;
-              }
-              if (Object.keys(patch).length > 0) {
-                updateAnime(anime.id, patch).catch(() => {});
-              }
-            }
-          }
-        } catch (autoHealErr) {
-          console.warn('Auto-cura da franquia em segundo plano falhou:', autoHealErr);
-        }
       } catch (err) {
         console.warn('Erro ao carregar extras do anime:', err);
       } finally {
@@ -279,7 +238,6 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({
 
   if (!isOpen || !anime) return null;
 
-  const effectiveFranchiseInfo = franchiseInfo || resolveFranchiseAggregatedInfo(anime);
   const statusConfig = STATUS_CONFIG[anime.status] || STATUS_CONFIG.watching;
 
   const handleSaveNotes = () => {
@@ -759,53 +717,9 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({
 
                 {/* Badges Rápidos de Ficha Técnica */}
                 <div className="flex flex-wrap items-center gap-1.5 justify-center sm:justify-start text-[11px]">
-                  {/* Status Pessoal do Usuário */}
                   <span className={`px-2.5 py-0.5 rounded-lg font-bold border ${statusConfig.badgeBg}`}>
                     {statusConfig.label}
                   </span>
-
-                  {/* Status Soberano da Franquia */}
-                  {effectiveFranchiseInfo.status.isUpcoming && (
-                    <span className="px-2.5 py-0.5 rounded-lg font-bold border border-amber-500/50 bg-amber-500/20 text-amber-300 flex items-center gap-1 shadow-sm">
-                      <Sparkles className="w-3 h-3 text-amber-400" />
-                      <span>Próxima Temp. Confirmada</span>
-                    </span>
-                  )}
-
-                  {effectiveFranchiseInfo.status.isCurrentlyAiring && (
-                    <span className="px-2.5 py-0.5 rounded-lg font-bold border border-emerald-500/50 bg-emerald-500/20 text-emerald-300 flex items-center gap-1 shadow-sm">
-                      <Flame className="w-3 h-3 text-emerald-400" />
-                      <span>Em Exibição</span>
-                    </span>
-                  )}
-
-                  {effectiveFranchiseInfo.status.isFinished && (
-                    <span className="px-2.5 py-0.5 rounded-lg font-bold border border-slate-700 bg-slate-800/80 text-slate-300 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3 text-slate-400" />
-                      <span>Já Finalizado</span>
-                    </span>
-                  )}
-
-                  {/* Estúdios Unificados da Franquia */}
-                  {(effectiveFranchiseInfo.unifiedStudios || anime.studio) && (
-                    <span className="px-2.5 py-0.5 rounded-lg bg-black border border-indigo-500/30 text-indigo-300 font-medium flex items-center gap-1">
-                      <Building2 className="w-3 h-3 text-indigo-400" />
-                      <span>{effectiveFranchiseInfo.unifiedStudios || anime.studio}</span>
-                    </span>
-                  )}
-
-                  {/* Total de Episódios Lançados */}
-                  {effectiveFranchiseInfo.totalReleasedEpisodes ? (
-                    <span className="px-2.5 py-0.5 rounded-lg bg-black border border-white/10 text-slate-300 font-medium flex items-center gap-1">
-                      <Tv className="w-3 h-3 text-slate-400" />
-                      <span>{effectiveFranchiseInfo.totalReleasedEpisodes} episódios</span>
-                    </span>
-                  ) : anime.totalEpisodes ? (
-                    <span className="px-2.5 py-0.5 rounded-lg bg-black border border-white/10 text-slate-300 font-medium flex items-center gap-1">
-                      <Tv className="w-3 h-3 text-slate-400" />
-                      <span>{anime.totalEpisodes} episódios</span>
-                    </span>
-                  ) : null}
 
                   {anime.format && (
                     <span className="px-2.5 py-0.5 rounded-lg bg-black border border-white/10 text-slate-300 font-medium">
@@ -816,6 +730,12 @@ export const AnimeDetailModal: React.FC<AnimeDetailModalProps> = ({
                   {anime.releaseYear && (
                     <span className="px-2.5 py-0.5 rounded-lg bg-black border border-white/10 text-slate-300 font-medium">
                       {anime.releaseYear}
+                    </span>
+                  )}
+
+                  {anime.studio && (
+                    <span className="px-2.5 py-0.5 rounded-lg bg-black border border-indigo-500/30 text-indigo-300 font-medium">
+                      {anime.studio}
                     </span>
                   )}
 

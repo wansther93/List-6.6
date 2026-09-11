@@ -14,7 +14,6 @@
  */
 
 import { getFranchiseRootTitle } from './franchiseService';
-import type { Anime, FranchiseTreeItem } from '../types';
 
 export interface AnimeAggregatedStatus {
   state: 'releasing' | 'upcoming' | 'finished';
@@ -311,121 +310,5 @@ export function resolveAnimeAggregatedStatus(params: {
     statusDescription: 'Aguardando confirmação oficial dos produtores sobre novas informações.',
     totalAggregateEpisodes: totalEpisodes,
     bannerUrl: relationBanner,
-  };
-}
-
-export interface FranchiseAggregatedInfo {
-  status: AnimeAggregatedStatus;
-  unifiedStudios: string | null;
-  totalReleasedEpisodes: number | null;
-  displayStatusBadge: string;
-}
-
-/**
- * Agregação Inteligente de Dados e Status Soberano da Franquia
- * 
- * Regras Estritas:
- * - Status da Obra: Se há uma continuação anunciada/confirmada (ex: OPM T3), o status é "Próxima Temp. Confirmada".
- *   Se estiver passando no Japão, é "Em Exibição".
- *   Se todas as temporadas estiverem finalizadas sem sequências anunciadas, é "Já Finalizado".
- * - Estúdios Unificados: Unifica os estúdios das temporadas principais (ex: "Madhouse, J.C.Staff" para One Punch Man).
- * - Total de Episódios: Soma apenas os episódios das temporadas já lançadas (ex: 12 da T1 + 12 da T2 = 24 eps para OPM).
- */
-export function resolveFranchiseAggregatedInfo(
-  anime: Anime,
-  franchiseTree?: {
-    items?: FranchiseTreeItem[];
-    unifiedStudios?: string[];
-    hasUpcomingSeason?: boolean;
-    hasReleasingSeason?: boolean;
-    totalReleasedEpisodes?: number;
-  } | null
-): FranchiseAggregatedInfo {
-  const nowYear = new Date().getFullYear();
-
-  // 1. Estúdios Unificados
-  let unifiedStudios: string | null = null;
-  if (franchiseTree?.unifiedStudios && franchiseTree.unifiedStudios.length > 0) {
-    unifiedStudios = franchiseTree.unifiedStudios.join(', ');
-  } else if (anime.studio) {
-    unifiedStudios = anime.studio;
-  }
-
-  // 2. Total de Episódios das temporadas já lançadas
-  let totalReleasedEpisodes: number | null = null;
-  if (franchiseTree?.totalReleasedEpisodes && franchiseTree.totalReleasedEpisodes > 0) {
-    totalReleasedEpisodes = franchiseTree.totalReleasedEpisodes;
-  } else if (Array.isArray(anime.seasons) && anime.seasons.length > 0) {
-    let sum = 0;
-    let found = false;
-    for (const s of anime.seasons) {
-      const year = s.releaseYear;
-      // Não soma se for temporada claramente futura
-      if (year && year > nowYear) continue;
-      if (s.totalEpisodes && s.totalEpisodes > 0) {
-        sum += s.totalEpisodes;
-        found = true;
-      }
-    }
-    if (found && sum > 0) {
-      totalReleasedEpisodes = sum;
-    }
-  }
-
-  if (!totalReleasedEpisodes && anime.totalEpisodes) {
-    totalReleasedEpisodes = anime.totalEpisodes;
-  }
-
-  // 3. Status Soberano da Franquia
-  const hasReleasing = Boolean(
-    franchiseTree?.hasReleasingSeason ||
-    anime.airingStatus === 'Currently Airing' ||
-    anime.seasons?.some((s) => s.status?.toLowerCase().includes('currently') || s.status?.toLowerCase().includes('ongoing'))
-  );
-
-  const hasUpcoming = Boolean(
-    franchiseTree?.hasUpcomingSeason ||
-    anime.airingStatus === 'Not yet aired' ||
-    anime.status === 'waiting_new_episodes' ||
-    anime.seasons?.some((s) => {
-      const yr = s.releaseYear;
-      const st = (s.status || '').toLowerCase();
-      return (yr && yr > nowYear) || st.includes('anons') || st.includes('not yet') || st.includes('upcoming');
-    })
-  );
-
-  let state: 'releasing' | 'upcoming' | 'finished' = 'finished';
-  let badgeLabel = 'Já Finalizado';
-  let desc = totalReleasedEpisodes ? `Obra concluída com ${totalReleasedEpisodes} episódios.` : 'Obra concluída.';
-
-  if (hasReleasing) {
-    state = 'releasing';
-    badgeLabel = 'Em Exibição';
-    const day = translateBroadcastDay(anime.broadcastDay) || 'Semanalmente';
-    desc = `Novos episódios transmitidos ${day}.`;
-  } else if (hasUpcoming) {
-    state = 'upcoming';
-    badgeLabel = 'Próxima Temp. Confirmada';
-    desc = 'Continuação ou nova temporada confirmada pelas fontes oficiais da produção.';
-  }
-
-  const status: AnimeAggregatedStatus = {
-    state,
-    isCurrentlyAiring: state === 'releasing',
-    isUpcoming: state === 'upcoming',
-    isFinished: state === 'finished',
-    broadcastDay: state === 'releasing' ? translateBroadcastDay(anime.broadcastDay) : null,
-    broadcastTime: null,
-    statusBadgeLabel: badgeLabel,
-    statusDescription: desc,
-    totalAggregateEpisodes: totalReleasedEpisodes,
-    bannerUrl: anime.bannerUrl || null,
-  };
-
-  return {
-    status,
-    unifiedStudios,
-    totalReleasedEpisodes,
-    displayStatusBadge: badgeLabel,
   };
 }

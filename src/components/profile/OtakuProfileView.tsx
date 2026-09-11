@@ -182,13 +182,9 @@ export const OtakuProfileView: React.FC<OtakuProfileViewProps> = ({
   const [selectedScheduleAnime, setSelectedScheduleAnime] = useState<ScheduleAnimeItem | null>(null);
 
   const handleOpenAnimeInfo = useCallback((targetAnime: Anime) => {
-    if (onOpenAnimeDetail) {
-      onOpenAnimeDetail(targetAnime);
-      return;
-    }
     const item = animeToScheduleItem(targetAnime);
     setSelectedScheduleAnime(item);
-  }, [onOpenAnimeDetail]);
+  }, []);
 
   // Coleção Completa Expansível (minimizar/maximizar) e Filtro por Nome
   const [isCollectionExpanded, setIsCollectionExpanded] = useState(false);

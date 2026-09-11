@@ -5,7 +5,6 @@
  */
 import type { Anime, AnimeSeasonOrArc, FranchiseTreeItem, AnimeArcPreset } from '../types';
 import { searchAnimeMetadata } from './jikanService';
-import { fetchShikimoriFranchise, normalizeAudiovisualFormat } from './shikimoriService';
 
 // Normalizador de título de franquia (unifica nomes ocidentais, japoneses e remove sufixos de temporada)
 export function getFranchiseRootTitle(title: string): string {
@@ -525,10 +524,6 @@ export async function fetchAnimeFranchiseTree(
   items: FranchiseTreeItem[];
   predefinedArcs?: AnimeArcPreset[];
   activeAiringDay?: string | null;
-  unifiedStudios?: string[];
-  hasUpcomingSeason?: boolean;
-  hasReleasingSeason?: boolean;
-  totalReleasedEpisodes?: number;
 }> {
   let resolvedMalId: number | null = typeof searchQueryOrMalId === 'number' || /^\d+$/.test(String(searchQueryOrMalId))
     ? Number(searchQueryOrMalId)
@@ -557,69 +552,6 @@ export async function fetchAnimeFranchiseTree(
   const rootTitle = getFranchiseRootTitle(rawSearch);
   const arcs = getPredefinedArcs(rawSearch);
 
-  // =========================================================================
-  // CAMADA 1: MOTOR DE FRANQUIA PROFUNDA VIA SHIKIMORI (RESPOSTA ULTRA RÁPIDA)
-  // =========================================================================
-  if (resolvedMalId) {
-    try {
-      const shikimoriResult = await fetchShikimoriFranchise(resolvedMalId);
-      if (shikimoriResult && shikimoriResult.nodes.length > 0) {
-        // Ordenação cronológica estrita por ano/data
-        const sortedNodes = [...shikimoriResult.nodes].sort((a, b) => {
-          const dateA = a.date || (a.year ? a.year * 31536000 : 9999999999);
-          const dateB = b.date || (b.year ? b.year * 31536000 : 9999999999);
-          return dateA - dateB;
-        });
-
-        const shikimoriItems: FranchiseTreeItem[] = sortedNodes.map((node, idx) => {
-          const detail = shikimoriResult.detailsMap.get(node.id);
-          const rawKind = detail?.kind || node.kind;
-          const mappedFormat = normalizeAudiovisualFormat(rawKind);
-          const rawTitle = detail?.name || node.name;
-          const year = detail?.aired_on ? new Date(detail.aired_on).getFullYear() : (node.year || null);
-
-          let relType: FranchiseTreeItem['relationType'] = 'sequel';
-          if (idx === 0) relType = 'main';
-          else if (mappedFormat === 'Movie') relType = 'movie';
-          else if (mappedFormat === 'OVA') relType = 'ova';
-
-          return {
-            id: node.id,
-            title: formatMediaTitlePT(rawTitle, mappedFormat.toUpperCase(), idx, rootTitle),
-            englishTitle: detail?.name || rawTitle,
-            japaneseTitle: Array.isArray(detail?.japanese) ? detail.japanese[0] : (detail?.japanese || ''),
-            format: mappedFormat,
-            episodes: detail?.episodes || null,
-            seasonYear: year,
-            coverUrl: detail?.image?.original || detail?.image?.preview || node.image_url,
-            relationType: relType,
-            order: idx + 1,
-            status: detail?.status || null,
-          };
-        });
-
-        if (shikimoriItems.length > 0) {
-          return {
-            rootTitle: rootTitle || rawSearch,
-            franchiseIds: Array.from(new Set(shikimoriResult.nodes.map((n) => n.id))),
-            items: shikimoriItems,
-            predefinedArcs: arcs || undefined,
-            activeAiringDay: null,
-            unifiedStudios: shikimoriResult.unifiedStudios,
-            hasUpcomingSeason: shikimoriResult.hasUpcomingSeason,
-            hasReleasingSeason: shikimoriResult.hasReleasingSeason,
-            totalReleasedEpisodes: shikimoriResult.totalReleasedEpisodes,
-          };
-        }
-      }
-    } catch (shikimoriErr) {
-      console.warn('Camada 1 (Shikimori Franchise) falhou, acionando Camada 2 (AniList GraphQL):', shikimoriErr);
-    }
-  }
-
-  // =========================================================================
-  // CAMADA 2: ANILIST GRAPHQL AVANÇADO (FALLBACK DE SEGURANÇA E RESILIÊNCIA)
-  // =========================================================================
   const rootKeywords = rootTitle
     .split(' ')
     .filter(w => w.length >= 3 && !['the', 'and', 'arc', 'hen', 'kara', 'ittara'].includes(w));
@@ -916,33 +848,12 @@ export async function fetchAnimeFranchiseTree(
           };
         });
 
-        const nowYear = new Date().getFullYear();
-        let hasUp = false;
-        let hasRel = false;
-        let totalEps = 0;
-
-        collectedList.forEach((n) => {
-          const st = (n.status || '').toUpperCase();
-          const yr = n.startDate?.year || n.seasonYear || null;
-          if (st === 'RELEASING' || n.nextAiringEpisode?.airingAt) hasRel = true;
-          else if (st === 'NOT_YET_RELEASED' || (yr && yr > nowYear)) hasUp = true;
-
-          if (st === 'FINISHED' || (!st && yr && yr <= nowYear)) {
-            if (n.episodes && n.episodes > 0 && n.format !== 'SPECIAL') {
-              totalEps += n.episodes;
-            }
-          }
-        });
-
         return {
           rootTitle: rootTitle || rawSearch,
           franchiseIds: Array.from(idsSet),
           items: finalItems,
           predefinedArcs: arcs || undefined,
           activeAiringDay: detectedAiringDay || null,
-          hasUpcomingSeason: hasUp,
-          hasReleasingSeason: hasRel,
-          totalReleasedEpisodes: totalEps > 0 ? totalEps : undefined,
         };
       }
     }
@@ -1061,10 +972,6 @@ export async function syncFranchiseSeasonsForAnime(
   updatedSeasons: AnimeSeasonOrArc[];
   newFranchiseIds: number[];
   latestBroadcastDay?: string | null;
-  unifiedStudios?: string[];
-  hasUpcomingSeason?: boolean;
-  hasReleasingSeason?: boolean;
-  totalReleasedEpisodes?: number;
 }> {
   if (!anime) {
     return { hasNewSeasons: false, newSeasonsCount: 0, updatedSeasons: [], newFranchiseIds: [] };
@@ -1227,10 +1134,6 @@ export async function syncFranchiseSeasonsForAnime(
       updatedSeasons,
       newFranchiseIds: mergedFranchiseIds,
       latestBroadcastDay: tree.activeAiringDay || anime.broadcastDay || null,
-      unifiedStudios: tree.unifiedStudios,
-      hasUpcomingSeason: tree.hasUpcomingSeason,
-      hasReleasingSeason: tree.hasReleasingSeason,
-      totalReleasedEpisodes: tree.totalReleasedEpisodes,
     };
   } catch (err) {
     console.warn('Erro ao sincronizar temporadas da franquia:', err);

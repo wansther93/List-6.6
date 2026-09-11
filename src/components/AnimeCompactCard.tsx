@@ -65,7 +65,8 @@ export const AnimeCompactCard: React.FC<AnimeCompactCardProps> = ({
   return (
     <div
       id={`anime-compact-card-${anime.id}`}
-      className="group relative rounded-2xl overflow-hidden bg-[#0a0a0f] border border-white/10 transition-all duration-300 shadow-xl shadow-black/90 flex flex-col aspect-[1/1.42] select-none hover:-translate-y-0.5"
+      onClick={() => onOpenDetail(anime)}
+      className="group relative rounded-2xl overflow-hidden bg-[#0a0a0f] border border-white/10 transition-all duration-300 shadow-xl shadow-black/90 flex flex-col aspect-[1/1.42] select-none hover:-translate-y-0.5 cursor-pointer"
     >
       {/* Background Poster Cover Image com cores naturais */}
       <div 

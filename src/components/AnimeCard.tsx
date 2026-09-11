@@ -65,7 +65,8 @@ export const AnimeCard: React.FC<AnimeCardProps> = ({
   return (
     <div
       id={`anime-card-${anime.id}`}
-      className="group relative bg-[#09090d]/95 hover:bg-[#101017] rounded-2xl p-2 sm:p-2.5 transition-all duration-200 shadow-md shadow-black/80 flex items-center justify-between gap-2.5 sm:gap-3.5 select-none"
+      onClick={() => onOpenDetail(anime)}
+      className="group relative bg-[#09090d]/95 hover:bg-[#101017] rounded-2xl p-2 sm:p-2.5 transition-all duration-200 shadow-md shadow-black/80 flex items-center justify-between gap-2.5 sm:gap-3.5 select-none cursor-pointer"
     >
       {/* Left: Compact Cover Thumbnail (100% limpa, sem selo em cima da arte) */}
       <div
